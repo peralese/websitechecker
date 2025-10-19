@@ -366,20 +366,21 @@ function ensureDashboard_(ss) {
   dsh.getRange('A8').setValue('Avg Response (24h, ms)').setFontWeight('bold');
   dsh.getRange('B8').setFormula('=IFERROR(ROUND(AVERAGE(FILTER(Checks!F:F, VALUE(Checks!A:A) > NOW()-1)),0), )');
 
-  // ---- Recent failures table ----
-  dsh.getRange('H10').setValue('Recent Failures (last 20)').setFontWeight('bold');
+  // ---- Recent failures table (left side) ----
+  dsh.getRange('A10').setValue('Recent Failures (last 20)').setFontWeight('bold');
 
-  // Write across 4 columns (H12:K12)
-  dsh.getRange(12, 8, 1, 4).setValues([
+  // Write across 4 columns (A12:D12)
+  dsh.getRange(12, 1, 1, 4).setValues([
     ['Timestamp','URL','Status','Error']
   ]).setFontWeight('bold');
 
-  dsh.getRange('H13').setFormula('=QUERY(Checks!A:O,"select A,B,D,O where C = false order by A desc limit 20",0)');
+  // Friendly message if none
+  dsh.getRange('A13').setFormula(
+    '=IF(COUNTA(FILTER(Checks!A:A, Checks!C:C=FALSE))=0, {"No failures","","",""}, QUERY(Checks!A:O,"select A,B,D,O where C = false order by A desc limit 20",0))'
+  );
 
   // Optional: tidy column widths
-  dsh.setColumnWidths(1, 6, 180);
-  dsh.setColumnWidth(6, 220);
-  dsh.setColumnWidths(8, 4, 160);
+  dsh.setColumnWidths(1, 4, 180);
 }
 
 

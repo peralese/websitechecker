@@ -13,7 +13,7 @@ Overview
 - Extracts page title and meta description (for quick sanity checks)
 - Records response payload size and resolves DNS A/AAAA via Google DoH
 - Writes results to a `Checks` sheet with stable headers
-- Builds a `Dashboard` sheet with KPIs, per‑URL stats, and a failure feed
+- Builds a `Dashboard` sheet with KPIs and a failure feed
 - Sends email alerts when a check fails (non‑2xx/3xx or thrown error)
 
 Sheets Created
@@ -25,7 +25,7 @@ Sheets Created
     H `Title`, I `Meta Description`, J `Keyword`, K `Keyword Present`,
     L `DNS A`, M `DNS AAAA`, N `SSL Days Remaining` (placeholder), O `Error`.
 - `Config` — Key/value config (see Configuration).
-- `Dashboard` — Summary KPIs and per‑URL performance table with sparklines.
+- `Dashboard` - Summary KPIs plus a "Recent Failures" table.
 
 Quick Start
 -----------
@@ -65,12 +65,10 @@ Dashboard
 ---------
 
 - KPIs (last 24h): total checks, failures, uptime, and average response time.
-- Per‑URL table: last status, last OK, average and 95th percentile response times, and a sparkline of the most recent samples.
-- Recent failures (last 20): timestamp, URL, status, and error message.
+- Recent failures (last 20): timestamp, URL, status, and error message. The table lives under the KPIs on the left and shows "No failures" when none are present.
 
-Notes about formulas:
-- The Dashboard formulas coerce URLs to text using `TO_TEXT` to avoid issues when `Checks!B` contains hyperlinks.
-- A hidden helper column holds the latest row index for each URL to reliably pull the most recent values.
+Notes
+- The dashboard is rebuilt on each run via `ensureDashboard_()`.
 
 Email Alerts
 ------------
@@ -91,11 +89,9 @@ Apps Script applies daily quotas. If you scale checks significantly, consider sp
 Troubleshooting
 ---------------
 
-- Dashboard cells stay blank:
-  - Ensure `Checks` has at least one data row for each URL.
-  - Make sure `Dashboard!A13:A` contains exactly the URLs found in `Checks!B:B`. The sheet auto‑generates this list; avoid manual edits.
-  - If your URL cells are hyperlinks, the formulas already coerce to text, but if you copy/paste, extra spaces can still break matches. Clean with TRIM if needed.
-  - Force a recalculation by re‑running `runChecks()` or momentarily editing a Dashboard formula cell.
+- Dashboard not updating:
+  - Run `runChecks()` (or `initialize()`) to rebuild the sheet.
+  - If KPIs look stale, wait a few seconds for formulas to calculate.
 - No emails sent:
   - Confirm `EMAILS` contains valid addresses, or leave empty to send to your own account.
   - Check the `Error` column in `Checks` for clues.
