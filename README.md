@@ -117,3 +117,14 @@ Files
 
 ---
 If you want, I can add a `rebuildDashboard()` utility that refreshes formulas without clearing any custom formatting or notes on the Dashboard tab.
+
+## License
+
+MIT
+
+---
+
+## Author
+
+**Erick Perales** — IT Architect, Cloud Migration Specialist  
+<https://github.com/peralese>
