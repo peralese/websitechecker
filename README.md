@@ -101,9 +101,30 @@ Troubleshooting
 Extending
 ---------
 
-- SSL Days Remaining: Currently a placeholder for HTTPS URLs; you can add a certificate lookup to populate column N.
-- Extra health checks: Parse additional HTML signals or API responses.
-- Webhooks: In addition to email, post failures to chat or incident tools.
+- Data retention: Add a scheduled cleanup to delete or archive rows older than a window (e.g., 24h, 7d). The Dashboard already looks back 24h, so long-term retention is optional.
+- Archival: Move old rows to an `Archive` sheet before deleting to keep a long-running history without slowing the `Checks` tab.
+- Rollups: Write one row per day with totals, failures, uptime, average and p95 response time for long-term trend charts.
+- SSL expiry: Populate column N with days remaining for HTTPS endpoints.
+- Alerting: Rate-limit alerts, require X consecutive failures before paging, or send to Slack/webhooks in addition to email.
+- Reliability: Retries with backoff, per-URL timeouts, capture redirect chains.
+- Extra checks: JSON/API assertions, keyword must/must-not match, HEAD vs GET.
+
+SMS Alerts
+----------
+
+Two practical options to receive SMS when failures occur:
+
+- Email-to-SMS gateway (quickest): Add your carrier address to `Config → EMAILS`.
+  - AT&T: `1234567890@txt.att.net`
+  - Verizon SMS: `1234567890@vtext.com` (160 chars)
+  - Verizon MMS: `1234567890@vzwpix.com` (longer messages/links)
+  - T‑Mobile: `1234567890@tmomail.net`
+  - Google Fi: `1234567890@msg.fi.google.com`
+  Notes: Messages are plain text and may be truncated; carriers may throttle bulk sends.
+
+- Twilio (programmable SMS): Store `TWILIO_SID`, `TWILIO_TOKEN`, and `TWILIO_FROM` in Script Properties and add a helper that posts to Twilio’s REST API. Call it alongside the existing email alert when failures occur.
+  - Minimal helper (pseudo): `sendSmsTwilio_(to, body)` → `UrlFetchApp.fetch('https://api.twilio.com/.../Messages.json', { method: 'post', headers: { Authorization: 'Basic ' + Utilities.base64Encode(sid+':'+token) }, payload: { To: to, From: from, Body: body } })`.
+  - Keep bodies short for readability on SMS.
 
 Files
 -----
