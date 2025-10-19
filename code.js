@@ -364,73 +364,7 @@ function ensureDashboard_(ss) {
   dsh.getRange('B7').setNumberFormat('0.00%');
 
   dsh.getRange('A8').setValue('Avg Response (24h, ms)').setFontWeight('bold');
-  dsh.getRange('B8').setFormula('=IFERROR(ROUND(AVERAGE(FILTER(Checks!F:F, Checks!A:A > TEXT(NOW()-1,"yyyy-mm-dd hh:mm:ss"))),0), )');
-
-  // ---- Per-URL stats header ----
-  dsh.getRange('A10').setValue('Per-URL Status & Performance').setFontWeight('bold');
-
-  // Write across 7 columns (A12:G12) — includes hidden helper column for latest row
-  dsh.getRange(12, 1, 1, 7).setValues([
-    ['URL','Last Status','Last OK','Avg RT (ms)','95th RT (ms)','Sparkline (last 20)','Row#']
-  ]).setFontWeight('bold');
-
-  // Distinct URL list (force plain text so QUERY matches reliably)
-  dsh.getRange('A13').setFormula(
-    '=ARRAYFORMULA(TO_TEXT(SORT(UNIQUE(FILTER(Checks!B2:B, Checks!B2:B<>"" )),1,TRUE)))'
-  );
-
-
-// Fill formulas for up to N distinct URLs (raise if you have more)
-const rows = 100;
-
-/* G: Helper latest row number per URL (hidden) */
-dsh.getRange(13, 7, rows, 1).setFormulaR1C1(
-  `=IFERROR(
-     INDEX(
-       SORT(FILTER(ROW(Checks!A:A), TO_TEXT(Checks!B:B)=TO_TEXT(RC[-6]), Checks!A:A<>""), 1, FALSE),
-       1
-     ),
-     ""
-   )`
-);
-
-/* B: Last Status via helper row */
-dsh.getRange(13, 2, rows, 1).setFormulaR1C1(
-  `=IF(RC[5]="","", INDEX(Checks!D:D, RC[5]))`
-);
-
-/* C: Last OK via helper row */
-dsh.getRange(13, 3, rows, 1).setFormulaR1C1(
-  `=IF(RC[4]="","", INDEX(Checks!C:C, RC[4]))`
-);
-
-/* D: Avg RT (ms) – average of F for this URL */
-dsh.getRange(13, 4, rows, 1).setFormulaR1C1(
-  `=IFERROR(ROUND(AVERAGE(FILTER(Checks!F:F, TO_TEXT(Checks!B:B)=TO_TEXT(RC[-3]), Checks!F:F<>"")), 0), "")`
-);
-
-/* E: 95th RT (ms) – percentile over this URL’s response times */
-dsh.getRange(13, 5, rows, 1).setFormulaR1C1(
-  `=IFERROR(ROUND(PERCENTILE.INC(FILTER(Checks!F:F, TO_TEXT(Checks!B:B)=TO_TEXT(RC[-4]), Checks!F:F<>""), 0.95), 0), "")`
-);
-
-/* F: Sparkline (last up to 20 by latest row) */
-dsh.getRange(13, 6, rows, 1).setFormulaR1C1(
-  `=IFERROR(
-     SPARKLINE(
-       INDEX(
-         SORT(FILTER({ROW(Checks!A:A),Checks!F:F}, TO_TEXT(Checks!B:B)=TO_TEXT(RC[-5]), Checks!F:F<>""), 1, FALSE),
-         SEQUENCE(20), 2
-       ),
-       {"charttype","line"}
-     ),
-     ""
-   )`
-);
-
-  // Hide helper column G
-  dsh.hideColumns(7);
-
+  dsh.getRange('B8').setFormula('=IFERROR(ROUND(AVERAGE(FILTER(Checks!F:F, VALUE(Checks!A:A) > NOW()-1)),0), )');
 
   // ---- Recent failures table ----
   dsh.getRange('H10').setValue('Recent Failures (last 20)').setFontWeight('bold');
