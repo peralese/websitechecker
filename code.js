@@ -45,6 +45,9 @@ function runChecks() {
   const sh = ss.getSheetByName(SHEET_NAME);
   sh.getRange(sh.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
 
+  // Prune data older than retention window (defaults to 7 days)
+  pruneOldRows_(ss, cfg.retentionDays || 7);
+
   // ---- Email alert on failures ----
   // A "failure" is OK !== true (covers HTTP errors and thrown exceptions)
   const OK_COL = 3;     // 1-indexed (A=1, B=2, C=3)
@@ -305,7 +308,8 @@ function createDefaultConfig_(ss) {
   const upserts = [
     ['KEYWORD','pets'], // change or leave blank
     ['PAGES','/ , http://travelpets.com/content/hotels/countries.asp?Area=Hotels&city=Dallas&id_country=US&id_region=TX'],
-    ['EMAILS',''] // comma-separated (e.g., "you@example.com, wife@example.com")
+    ['EMAILS',''], // comma-separated (e.g., "you@example.com, wife@example.com")
+    ['RETENTION_DAYS','7'] // keep last N days of checks
   ];
   upserts.forEach(([k,v]) => upsertConfig_(cfg, k, v));
 }
@@ -336,7 +340,8 @@ function readConfig_(ss) {
                   .split(',')
                   .map(s => s.trim())
                   .filter(Boolean);
-  return { keyword, pages, emails };
+  const retentionDays = Math.max(0, parseInt((map['RETENTION_DAYS'] || '7').toString().trim(), 10) || 7);
+  return { keyword, pages, emails, retentionDays };
 }
 
 // ==== Dashboard ====
@@ -381,6 +386,50 @@ function ensureDashboard_(ss) {
 
   // Optional: tidy column widths
   dsh.setColumnWidths(1, 4, 180);
+}
+
+// ==== Retention policy ====
+
+/**
+ * Deletes rows in the Checks sheet older than the given number of days.
+ * Assumes column A contains timestamps formatted as "yyyy-MM-dd HH:mm:ss".
+ * This format sorts lexicographically in the same order as chronological time,
+ * so we can compare strings safely when using the same timezone/format.
+ */
+function pruneOldRows_(ss, days) {
+  const d = Number(days);
+  if (!(d > 0)) return; // no-op for invalid values
+
+  const sh = ss.getSheetByName(SHEET_NAME);
+  if (!sh) return;
+  const lastRow = sh.getLastRow();
+  if (lastRow <= 1) return; // only header present
+
+  const tz = Session.getScriptTimeZone();
+  const cutoff = new Date(Date.now() - d * 24 * 60 * 60 * 1000);
+  const cutoffStr = Utilities.formatDate(cutoff, tz, 'yyyy-MM-dd HH:mm:ss');
+
+  const data = sh.getRange(2, 1, lastRow - 1, 1).getValues(); // column A (timestamps)
+  let firstKeepOffset = null; // offset from row 2
+  for (let i = 0; i < data.length; i++) {
+    const ts = String(data[i][0] || '').trim();
+    if (ts && ts >= cutoffStr) { // first row within retention window
+      firstKeepOffset = i;
+      break;
+    }
+  }
+
+  if (firstKeepOffset === null) {
+    // No rows within window; delete all data rows
+    sh.deleteRows(2, lastRow - 1);
+    return;
+  }
+
+  const firstKeepRow = 2 + firstKeepOffset;
+  const rowsToDelete = firstKeepRow - 2;
+  if (rowsToDelete > 0) {
+    sh.deleteRows(2, rowsToDelete);
+  }
 }
 
 

@@ -15,6 +15,7 @@ Overview
 - Writes results to a `Checks` sheet with stable headers
 - Builds a `Dashboard` sheet with KPIs and a failure feed
 - Sends email alerts when a check fails (non‑2xx/3xx or thrown error)
+- Enforces data retention: keeps only the last N days (default 7)
 
 Sheets Created
 --------------
@@ -51,6 +52,7 @@ Open the `Config` tab and edit values in column B:
   - `/` or `/status` or `http://example.com/health`.
 - `KEYWORD` — Optional keyword to search for in page HTML (sets `Keyword Present`).
 - `EMAILS` — Comma‑separated list of addresses to notify on failures.
+- `RETENTION_DAYS` — Number of days to keep in `Checks`. Older rows are deleted automatically after each run. Default: `7`.
 
 The script persists the Spreadsheet ID in Script Properties so it can reopen the same sheet on subsequent runs.
 
@@ -59,6 +61,7 @@ Public Functions
 
 - `initialize()` — One‑time setup. Creates sheets, headers, conditional formatting, default config, and the Dashboard.
 - `runChecks()` — Performs checks for configured pages, appends rows to `Checks`, sends email for failures, and refreshes the Dashboard.
+  Also prunes rows older than `RETENTION_DAYS` from the `Checks` sheet.
 - `testSingleUrl()` — Fetches a single URL and logs the result to the console for quick manual testing.
 
 Dashboard
@@ -101,7 +104,7 @@ Troubleshooting
 Extending
 ---------
 
-- Data retention: Add a scheduled cleanup to delete or archive rows older than a window (e.g., 24h, 7d). The Dashboard already looks back 24h, so long-term retention is optional.
+- Archival: Move old rows to an `Archive` sheet before deleting to keep a long-running history without slowing the `Checks` tab.
 - Archival: Move old rows to an `Archive` sheet before deleting to keep a long-running history without slowing the `Checks` tab.
 - Rollups: Write one row per day with totals, failures, uptime, average and p95 response time for long-term trend charts.
 - SSL expiry: Populate column N with days remaining for HTTPS endpoints.
