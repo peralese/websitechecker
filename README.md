@@ -63,6 +63,7 @@ Public Functions
 - `runChecks()` — Performs checks for configured pages, appends rows to `Checks`, sends email for failures, and refreshes the Dashboard.
   Also prunes rows older than `RETENTION_DAYS` from the `Checks` sheet.
 - `testSingleUrl()` — Fetches a single URL and logs the result to the console for quick manual testing.
+- `cleanupOldData()` — Manual cleanup function. Immediately removes all data older than `RETENTION_DAYS` from the `Checks` sheet. Useful for one-time cleanup of accumulated historical data.
 
 Dashboard
 ---------
@@ -105,12 +106,172 @@ Extending
 ---------
 
 - Archival: Move old rows to an `Archive` sheet before deleting to keep a long-running history without slowing the `Checks` tab.
-- Archival: Move old rows to an `Archive` sheet before deleting to keep a long-running history without slowing the `Checks` tab.
 - Rollups: Write one row per day with totals, failures, uptime, average and p95 response time for long-term trend charts.
 - SSL expiry: Populate column N with days remaining for HTTPS endpoints.
 - Alerting: Rate-limit alerts, require X consecutive failures before paging, or send to Slack/webhooks in addition to email.
-- Reliability: Retries with backoff, per-URL timeouts, capture redirect chains.
 - Extra checks: JSON/API assertions, keyword must/must-not match, HEAD vs GET.
+
+Roadmap: AWS Lambda Migration
+------------------------------
+
+For more frequent checks, better scalability, and resume-building experience, consider migrating to AWS Lambda:
+
+### Architecture Overview
+
+```
+CloudWatch Events (cron) → Lambda Function → Check URLs
+                              ↓
+                         DynamoDB (results)
+                              ↓
+                         SNS Topic → Email/SMS
+                              ↓
+                         CloudWatch Dashboard
+```
+
+### Benefits
+
+- **Faster checks**: 1-15 minute intervals (vs. hourly)
+- **Cost-effective**: Pay-per-use (~$1-5/month for typical usage)
+- **Scalable**: Handle hundreds of URLs without performance degradation
+- **Better alerting**: SNS integration for email, SMS, Slack, PagerDuty
+- **Professional monitoring**: CloudWatch metrics and dashboards
+- **Resume skill**: AWS Lambda, DynamoDB, CloudWatch, Infrastructure as Code
+
+### Implementation Steps
+
+1. **Lambda Function** (Python or Node.js)
+   - Port `checkUrl_()` logic to Lambda handler
+   - Use `requests` (Python) or `axios` (Node.js) for HTTP checks
+   - Add retry logic with exponential backoff (already implemented in current version)
+   - Store results in DynamoDB
+
+2. **DynamoDB Table**
+   - Partition key: `url` (string)
+   - Sort key: `timestamp` (number, Unix epoch)
+   - Attributes: status, responseTime, ok, error, title, etc.
+   - TTL: Auto-delete records older than retention period
+
+3. **CloudWatch Events**
+   - Cron expression: `rate(15 minutes)` or `cron(0/15 * * * ? *)`
+   - Trigger Lambda on schedule
+
+4. **SNS Topic**
+   - Create topic for alerts
+   - Subscribe email addresses
+   - Lambda publishes to SNS on failures
+
+5. **CloudWatch Dashboard**
+   - Uptime percentage (last 24h, 7d, 30d)
+   - Response time metrics (avg, p95, p99)
+   - Failure count and rate
+   - Alarms for consecutive failures
+
+6. **Infrastructure as Code** (Optional but recommended)
+   - Use AWS SAM, Terraform, or CDK
+   - Version control infrastructure
+   - Easy deployment and rollback
+
+### Migration Path
+
+**Phase 1: Parallel Run** (1-2 weeks)
+- Deploy Lambda alongside existing Google Apps Script
+- Compare results for accuracy
+- Tune retry logic and thresholds
+
+**Phase 2: Gradual Cutover**
+- Reduce Google Apps Script frequency to 2-4 hours
+- Use Lambda as primary monitor
+- Keep Google Sheets for historical analysis
+
+**Phase 3: Full Migration** (Optional)
+- Disable Google Apps Script
+- Export historical data to S3
+- Use CloudWatch/Grafana for dashboards
+
+### Estimated Costs
+
+- **Lambda**: ~$0.20/month (1M requests free tier, then $0.20 per 1M)
+- **DynamoDB**: ~$0.25/month (25GB free tier, on-demand pricing)
+- **CloudWatch**: ~$0.50/month (basic metrics free, custom metrics $0.30 each)
+- **SNS**: ~$0.50/month (1,000 emails free, then $2 per 100k)
+- **Total**: ~$1-2/month (well within free tier for first year)
+
+### Learning Resources
+
+- [AWS Lambda Getting Started](https://docs.aws.amazon.com/lambda/latest/dg/getting-started.html)
+- [Building a Serverless Website Monitor](https://aws.amazon.com/blogs/compute/building-a-serverless-website-monitor/)
+- [AWS SAM for Serverless Applications](https://aws.amazon.com/serverless/sam/)
+- [DynamoDB Best Practices](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/best-practices.html)
+
+### Sample Lambda Function (Python)
+
+```python
+import json
+import boto3
+import requests
+from datetime import datetime
+
+dynamodb = boto3.resource('dynamodb')
+sns = boto3.client('sns')
+table = dynamodb.Table('website-checks')
+
+def lambda_handler(event, context):
+    urls = event.get('urls', [])
+    failures = []
+    
+    for url in urls:
+        result = check_url(url)
+        
+        # Store in DynamoDB
+        table.put_item(Item={
+            'url': url,
+            'timestamp': int(datetime.now().timestamp()),
+            'status': result['status'],
+            'ok': result['ok'],
+            'responseTime': result['responseTime'],
+            'error': result.get('error', '')
+        })
+        
+        # Collect failures
+        if not result['ok']:
+            failures.append(result)
+    
+    # Send alert if failures
+    if failures:
+        sns.publish(
+            TopicArn='arn:aws:sns:us-east-1:123456789:website-alerts',
+            Subject=f'Website Check: {len(failures)} failure(s)',
+            Message=json.dumps(failures, indent=2)
+        )
+    
+    return {'statusCode': 200, 'body': json.dumps('Checks complete')}
+
+def check_url(url, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            start = datetime.now()
+            response = requests.get(url, timeout=10, allow_redirects=True)
+            elapsed = (datetime.now() - start).total_seconds() * 1000
+            
+            return {
+                'url': url,
+                'status': response.status_code,
+                'ok': 200 <= response.status_code < 400,
+                'responseTime': int(elapsed)
+            }
+        except Exception as e:
+            if attempt == max_retries - 1:
+                return {
+                    'url': url,
+                    'status': None,
+                    'ok': False,
+                    'responseTime': None,
+                    'error': str(e)
+                }
+            time.sleep(2 ** attempt)  # Exponential backoff
+```
+
+This roadmap provides a clear path to migrate when you're ready to level up your monitoring infrastructure and add valuable AWS experience to your resume.
 
 SMS Alerts
 ----------

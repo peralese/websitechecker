@@ -100,12 +100,47 @@ function checkUrl_(url, keyword) {
       dnsAAAA = dns.AAAA || [];
     }
 
-    // Fetch (follow redirects)
-    const fetchStart = Date.now();
-    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
-    rtMs = Date.now() - fetchStart;
+    // Fetch with retry logic (exponential backoff: 1s, 2s, 4s)
+    const maxRetries = 3;
+    let lastError = null;
+    let res = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const fetchStart = Date.now();
+        res = UrlFetchApp.fetch(url, {
+          muteHttpExceptions: true,
+          followRedirects: true,
+          headers: {
+            'User-Agent': 'TravelPets-Monitor/1.0 (Website Health Check)'
+          }
+        });
+        rtMs = Date.now() - fetchStart;
+        
+        status = res.getResponseCode();
+        
+        // Success or client error (4xx) - don't retry
+        if (status < 500) {
+          break;
+        }
+        
+        // Server error (5xx) - retry with backoff
+        lastError = `HTTP ${status}`;
+        if (attempt < maxRetries) {
+          const backoffMs = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+          Utilities.sleep(backoffMs);
+        }
+      } catch (e) {
+        lastError = String(e && e.message ? e.message : e);
+        if (attempt < maxRetries) {
+          const backoffMs = Math.pow(2, attempt - 1) * 1000;
+          Utilities.sleep(backoffMs);
+        } else {
+          throw e; // Re-throw on final attempt
+        }
+      }
+    }
 
-    status = res.getResponseCode();
     // GAS doesn't expose final URL after redirects; keep the requested URL
     finalUrl = url;
     const content = res.getContent();
@@ -437,4 +472,24 @@ function pruneOldRows_(ss, days) {
 function testSingleUrl() {
   const res = checkUrl_('http://www.travelpets.com/', 'pets');
   Logger.log(JSON.stringify(res, null, 2));
+}
+
+/** Manual cleanup: removes data older than configured retention period */
+function cleanupOldData() {
+  const ss = getOrCreateSpreadsheet_();
+  const cfg = readConfig_(ss);
+  const retentionDays = cfg.retentionDays || 7;
+  
+  Logger.log('Cleaning up data older than %s days...', retentionDays);
+  
+  const sh = ss.getSheetByName(SHEET_NAME);
+  const beforeCount = sh.getLastRow() - 1; // exclude header
+  
+  pruneOldRows_(ss, retentionDays);
+  
+  const afterCount = sh.getLastRow() - 1;
+  const deleted = beforeCount - afterCount;
+  
+  Logger.log('Cleanup complete. Deleted %s rows. Remaining: %s rows.', deleted, afterCount);
+  Logger.log('Spreadsheet URL: %s', ss.getUrl());
 }
